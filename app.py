@@ -183,9 +183,12 @@ with tab3:
             date_range = st.date_input("기간 선택",
                                        value=[df["date"].min(), df["date"].max()],
                                        format="YYYY/MM/DD")
-        filtered = df.copy()
+                filtered = df.copy()
         if filter_cat:
-            filtered = filtered[filtered["category"].isin(filter_cat)]
+            filtered = filtered[
+                filtered["category"].isin(filter_cat) |
+                ~filtered["category"].isin(all_cats)
+            ]
         if len(date_range) == 2:
             filtered = filtered[
                 (filtered["date"] >= date_range[0]) &
