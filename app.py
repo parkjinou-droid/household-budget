@@ -175,8 +175,8 @@ with tab3:
     if df.empty:
         st.info("아직 입력된 데이터가 없어요! 지출을 먼저 입력해주세요 😊")
     else:
-        all_cats = list(st.session_state.categories.keys())
         db_cats = df["category"].unique().tolist()
+        all_cats = list(st.session_state.categories.keys())
         merged_cats = list(dict.fromkeys(all_cats + [c for c in db_cats if c not in all_cats]))
         cf1, cf2 = st.columns(2)
         with cf1:
@@ -205,21 +205,20 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### ✏️ 내역 수정")
-        if not filtered.empty and "id" in filtered.columns:
-            id_list = filtered["id"].tolist()
+        if not df.empty and "id" in df.columns:
+            all_ids = df["id"].tolist()
             sel_id = st.selectbox(
-                "수정할 항목 선택", id_list,
-                format_func=lambda x: f"ID {x} | {filtered[filtered['id']==x]['category'].values[0]} | {fmt_won(filtered[filtered['id']==x]['amount'].values[0])} | {filtered[filtered['id']==x]['date'].values[0]}"
+                "수정할 항목 선택", all_ids,
+                format_func=lambda x: f"ID {x} | {df[df['id']==x]['category'].values[0]} | {fmt_won(df[df['id']==x]['amount'].values[0])} | {df[df['id']==x]['date'].values[0]}"
             )
-            sel_row = filtered[filtered["id"] == sel_id].iloc[0]
+            sel_row = df[df["id"] == sel_id].iloc[0]
             mc1, mc2 = st.columns(2)
             with mc1:
                 new_date = st.date_input("날짜 수정", value=sel_row["date"], format="YYYY/MM/DD", key="edit_date")
                 new_amount = st.text_input("금액 수정", value=str(sel_row["amount"]), key="edit_amount")
             with mc2:
-                cat_keys = merged_cats
-                cat_idx = cat_keys.index(sel_row["category"]) if sel_row["category"] in cat_keys else 0
-                new_cat = st.selectbox("카테고리 수정", options=cat_keys, index=cat_idx, key="edit_cat")
+                cat_idx = merged_cats.index(sel_row["category"]) if sel_row["category"] in merged_cats else 0
+                new_cat = st.selectbox("카테고리 수정", options=merged_cats, index=cat_idx, key="edit_cat")
                 new_memo = st.text_input("메모 수정", value=str(sel_row["memo"]) if sel_row["memo"] else "", key="edit_memo")
             if st.button("💾 수정 저장", type="primary"):
                 try:
@@ -238,11 +237,11 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### 🗑️ 내역 삭제")
-        if not filtered.empty and "id" in filtered.columns:
-            id_list2 = filtered["id"].tolist()
+        if not df.empty and "id" in df.columns:
+            all_ids2 = df["id"].tolist()
             del_id = st.selectbox(
-                "삭제할 항목 선택", id_list2,
-                format_func=lambda x: f"ID {x} | {filtered[filtered['id']==x]['category'].values[0]} | {fmt_won(filtered[filtered['id']==x]['amount'].values[0])} | {filtered[filtered['id']==x]['date'].values[0]}",
+                "삭제할 항목 선택", all_ids2,
+                format_func=lambda x: f"ID {x} | {df[df['id']==x]['category'].values[0]} | {fmt_won(df[df['id']==x]['amount'].values[0])} | {df[df['id']==x]['date'].values[0]}",
                 key="del_select"
             )
             if st.button("🗑️ 삭제하기", type="primary"):
