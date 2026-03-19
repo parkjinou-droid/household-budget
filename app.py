@@ -23,7 +23,7 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-CATEGORIES = {
+DEFAULT_CATEGORIES = {
     "마트/장보기": "🛒",
     "식비/외식": "🍚",
     "카페/음료": "☕",
@@ -33,6 +33,9 @@ CATEGORIES = {
     "문화/여가": "🎬",
     "기타": "📦",
 }
+
+if "categories" not in st.session_state:
+    st.session_state.categories = dict(DEFAULT_CATEGORIES)
 
 def load_data():
     try:
@@ -54,6 +57,13 @@ def save_expense(exp_date, amount, category, memo):
     res  = requests.post(url, headers=HEADERS, json=data, timeout=10)
     return res.status_code in [200, 201]
 
+def update_expense(row_id, exp_date, amount, category, memo):
+    url  = f"{SUPABASE_URL}/rest/v1/expenses?id=eq.{row_id}"
+    data = {"date": str(exp_date), "amount": int(amount),
+            "category": category, "memo": memo}
+    res  = requests.patch(url, headers=HEADERS, json=data, timeout=10)
+    return res.status_code in [200, 204]
+
 def delete_expense(row_id):
     url = f"{SUPABASE_URL}/rest/v1/expenses?id=eq.{row_id}"
     requests.delete(url, headers=HEADERS, timeout=10)
@@ -63,8 +73,9 @@ def fmt_won(n):
 
 st.title("💰 우리집 가계부")
 
-tab1, tab2, tab3 = st.tabs(["✏️ 지출 입력", "📊 월별 현황", "📋 내역 조회"])
+tab1, tab2, tab3, tab4 = st.tabs(["✏️ 지출 입력", "📊 월별 현황", "📋 내역 조회/수정", "⚙️ 카테고리 관리"])
 
+# ── 탭1: 지출 입력 ──────────────────────────────────────
 with tab1:
     st.markdown("### 오늘의 지출 입력")
     col_l, col_r = st.columns([1.2, 1])
@@ -75,11 +86,12 @@ with tab1:
         if "selected_cat" not in st.session_state:
             st.session_state.selected_cat = "기타"
         cat_cols = st.columns(4)
-        for i, (cat, icon) in enumerate(CATEGORIES.items()):
+        for i, (cat, icon) in enumerate(st.session_state.categories.items()):
             with cat_cols[i % 4]:
                 if st.button(f"{icon} {cat[:4]}", key=f"cat_{cat}"):
                     st.session_state.selected_cat = cat
-        st.info(f"선택된 카테고리: {CATEGORIES[st.session_state.selected_cat]} {st.session_state.selected_cat}")
+        cur_icon = st.session_state.categories.get(st.session_state.selected_cat, "📦")
+        st.info(f"선택된 카테고리: {cur_icon} {st.session_state.selected_cat}")
         memo = st.text_input("📝 메모 (선택)", placeholder="예: 이마트 장보기")
         if st.button("✅ 저장하기", type="primary", use_container_width=True):
             if not amount_str:
@@ -105,10 +117,11 @@ with tab1:
         st.caption(today.strftime("%Y년 %m월 %d일"))
         if not today_df.empty:
             for _, row in today_df.iterrows():
-                icon     = CATEGORIES.get(row["category"], "📦")
+                icon     = st.session_state.categories.get(row["category"], "📦")
                 memo_txt = f" — {row['memo']}" if row["memo"] else ""
                 st.markdown(f"{icon} **{row['category']}** {fmt_won(row['amount'])}{memo_txt}")
 
+# ── 탭2: 월별 현황 ──────────────────────────────────────
 with tab2:
     st.markdown("### 월별 지출 현황")
     df = load_data()
@@ -137,7 +150,7 @@ with tab2:
             with ch1:
                 cat_group = month_df.groupby("category")["amount"].sum().reset_index()
                 fig = go.Figure(go.Pie(
-                    labels=[f"{CATEGORIES.get(c,'📦')} {c}" for c in cat_group["category"]],
+                    labels=[f"{st.session_state.categories.get(c,'📦')} {c}" for c in cat_group["category"]],
                     values=cat_group["amount"], hole=0.5,
                     marker_colors=["#ff6b6b","#ffa07a","#f6c90e","#00d4aa",
                                    "#74b9ff","#a29bfe","#fd79a8","#b2bec3"]))
@@ -158,8 +171,9 @@ with tab2:
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig2, use_container_width=True)
 
+# ── 탭3: 내역 조회/수정/삭제 ────────────────────────────
 with tab3:
-    st.markdown("### 지출 내역 조회")
+    st.markdown("### 지출 내역 조회 / 수정 / 삭제")
     df = load_data()
     if df.empty:
         st.info("아직 입력된 데이터가 없어요! 지출을 먼저 입력해주세요 😊")
@@ -167,8 +181,8 @@ with tab3:
         cf1, cf2 = st.columns(2)
         with cf1:
             filter_cat = st.multiselect("카테고리 필터",
-                             options=list(CATEGORIES.keys()),
-                             default=list(CATEGORIES.keys()))
+                             options=list(st.session_state.categories.keys()),
+                             default=list(st.session_state.categories.keys()))
         with cf2:
             date_range = st.date_input("기간 선택",
                              value=[df["date"].min(), df["date"].max()],
@@ -180,16 +194,57 @@ with tab3:
                 (filtered["date"] <= date_range[1])
             ]
         st.markdown(f"**총 {len(filtered)}건 | 합계: {fmt_won(filtered['amount'].sum())}**")
-        display_df = filtered[["date","category","amount","memo"]].copy()
-        display_df.columns = ["날짜","카테고리","금액(원)","메모"]
+        display_df = filtered[["id","date","category","amount","memo"]].copy()
+        display_df.columns = ["ID","날짜","카테고리","금액(원)","메모"]
         display_df["금액(원)"] = display_df["금액(원)"].apply(lambda x: f"{x:,}")
-        st.dataframe(display_df, use_container_width=True, height=400)
-        with st.expander("🗑️ 항목 삭제"):
-            del_id = st.number_input("삭제할 항목 ID", min_value=1, step=1)
-            if st.button("삭제", type="primary"):
+        st.dataframe(display_df, use_container_width=True, height=300)
+
+        # 수정
+        st.markdown("---")
+        st.markdown("#### ✏️ 내역 수정")
+        if not filtered.empty:
+            id_list = filtered["id"].tolist()
+            sel_id  = st.selectbox("수정할 항목 ID 선택", id_list,
+                         format_func=lambda x: f"ID {x} — {filtered[filtered['id']==x]['category'].values[0]} {fmt_won(filtered[filtered['id']==x]['amount'].values[0])}")
+            sel_row = filtered[filtered["id"] == sel_id].iloc[0]
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                new_date   = st.date_input("날짜 수정", value=sel_row["date"], format="YYYY/MM/DD", key="edit_date")
+                new_amount = st.text_input("금액 수정", value=str(sel_row["amount"]), key="edit_amount")
+            with mc2:
+                new_cat  = st.selectbox("카테고리 수정",
+                               options=list(st.session_state.categories.keys()),
+                               index=list(st.session_state.categories.keys()).index(sel_row["category"])
+                               if sel_row["category"] in st.session_state.categories else 0,
+                               key="edit_cat")
+                new_memo = st.text_input("메모 수정", value=str(sel_row["memo"]) if sel_row["memo"] else "", key="edit_memo")
+            if st.button("💾 수정 저장", type="primary"):
+                try:
+                    ok = update_expense(sel_id, new_date,
+                                        int(new_amount.replace(",","").replace("원","")),
+                                        new_cat, new_memo)
+                    if ok:
+                        st.success("수정 완료!")
+                        st.rerun()
+                    else:
+                        st.error("수정 실패!")
+                except ValueError:
+                    st.error("금액은 숫자만 입력해주세요!")
+
+        # 삭제
+        st.markdown("---")
+        st.markdown("#### 🗑️ 내역 삭제")
+        if not filtered.empty:
+            del_id = st.selectbox("삭제할 항목 ID 선택", id_list,
+                        format_func=lambda x: f"ID {x} — {filtered[filtered['id']==x]['category'].values[0]} {fmt_won(filtered[filtered['id']==x]['amount'].values[0])}",
+                        key="del_select")
+            if st.button("🗑️ 삭제하기", type="primary"):
                 delete_expense(del_id)
                 st.success("삭제 완료!")
                 st.rerun()
+
+        # CSV 다운로드
+        st.markdown("---")
         csv = filtered.to_csv(index=False, encoding="utf-8-sig")
         st.download_button(
             label="📥 CSV 다운로드 (엑셀에서 열기)",
@@ -197,3 +252,53 @@ with tab3:
             file_name=f"가계부_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
+
+# ── 탭4: 카테고리 관리 ──────────────────────────────────
+with tab4:
+    st.markdown("### ⚙️ 카테고리 관리")
+    st.info("💡 카테고리는 이 세션에서만 유지돼요. 앱을 새로고침하면 기본값으로 돌아와요.")
+
+    # 현재 카테고리 목록
+    st.markdown("#### 현재 카테고리")
+    cat_df = pd.DataFrame(
+        [(icon, name) for name, icon in st.session_state.categories.items()],
+        columns=["아이콘", "카테고리명"]
+    )
+    st.dataframe(cat_df, use_container_width=True, hide_index=True)
+
+    # 카테고리 추가
+    st.markdown("#### ➕ 새 카테고리 추가")
+    ac1, ac2 = st.columns(2)
+    with ac1:
+        new_cat_name = st.text_input("카테고리 이름", placeholder="예: 반려동물")
+    with ac2:
+        new_cat_icon = st.text_input("이모지 아이콘", placeholder="예: 🐶")
+    if st.button("➕ 추가하기", type="primary"):
+        if not new_cat_name:
+            st.error("카테고리 이름을 입력해주세요!")
+        elif new_cat_name in st.session_state.categories:
+            st.warning("이미 있는 카테고리예요!")
+        else:
+            icon = new_cat_icon if new_cat_icon else "📌"
+            st.session_state.categories[new_cat_name] = icon
+            st.success(f"{icon} {new_cat_name} 추가 완료!")
+            st.rerun()
+
+    # 카테고리 삭제
+    st.markdown("#### 🗑️ 카테고리 삭제")
+    del_cat = st.selectbox("삭제할 카테고리 선택",
+                  options=list(st.session_state.categories.keys()))
+    if st.button("🗑️ 카테고리 삭제", type="secondary"):
+        if len(st.session_state.categories) <= 1:
+            st.error("최소 1개의 카테고리는 있어야 해요!")
+        else:
+            del st.session_state.categories[del_cat]
+            st.success(f"{del_cat} 삭제 완료!")
+            st.rerun()
+
+    # 기본값으로 초기화
+    st.markdown("---")
+    if st.button("🔄 기본 카테고리로 초기화"):
+        st.session_state.categories = dict(DEFAULT_CATEGORIES)
+        st.success("기본 카테고리로 초기화했어요!")
+        st.rerun()
