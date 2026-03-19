@@ -50,7 +50,7 @@ def load_data():
             return df
     except Exception as e:
         st.error(f"데이터 오류: {e}")
-    return pd.DataFrame(columns=["id","date","amount","category","memo","created_at"])
+    return pd.DataFrame(columns=["id", "date", "amount", "category", "memo", "created_at"])
 
 def save_expense(exp_date, amount, category, memo):
     url = f"{SUPABASE_URL}/rest/v1/expenses"
@@ -175,27 +175,25 @@ with tab3:
     if df.empty:
         st.info("아직 입력된 데이터가 없어요! 지출을 먼저 입력해주세요 😊")
     else:
+        all_cats = list(st.session_state.categories.keys())
+        db_cats = df["category"].unique().tolist()
+        merged_cats = list(dict.fromkeys(all_cats + [c for c in db_cats if c not in all_cats]))
         cf1, cf2 = st.columns(2)
         with cf1:
-            all_cats = list(st.session_state.categories.keys())
-            filter_cat = st.multiselect("카테고리 필터", options=all_cats, default=all_cats)
+            filter_cat = st.multiselect("카테고리 필터", options=merged_cats, default=merged_cats)
         with cf2:
             date_range = st.date_input("기간 선택",
                                        value=[df["date"].min(), df["date"].max()],
                                        format="YYYY/MM/DD")
-                filtered = df.copy()
+        filtered = df.copy()
         if filter_cat:
-            filtered = filtered[
-                filtered["category"].isin(filter_cat) |
-                ~filtered["category"].isin(all_cats)
-            ]
+            filtered = filtered[filtered["category"].isin(filter_cat)]
         if len(date_range) == 2:
             filtered = filtered[
                 (filtered["date"] >= date_range[0]) &
                 (filtered["date"] <= date_range[1])
             ]
         st.markdown(f"**총 {len(filtered)}건 | 합계: {fmt_won(filtered['amount'].sum())}**")
-
         if not filtered.empty:
             show_cols = [c for c in ["id", "date", "category", "amount", "memo"] if c in filtered.columns]
             display_df = filtered[show_cols].copy()
@@ -207,7 +205,7 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### ✏️ 내역 수정")
-        if not filtered.empty and "id" in filtered.columns and len(filtered) > 0:
+        if not filtered.empty and "id" in filtered.columns:
             id_list = filtered["id"].tolist()
             sel_id = st.selectbox(
                 "수정할 항목 선택", id_list,
@@ -219,7 +217,7 @@ with tab3:
                 new_date = st.date_input("날짜 수정", value=sel_row["date"], format="YYYY/MM/DD", key="edit_date")
                 new_amount = st.text_input("금액 수정", value=str(sel_row["amount"]), key="edit_amount")
             with mc2:
-                cat_keys = list(st.session_state.categories.keys())
+                cat_keys = merged_cats
                 cat_idx = cat_keys.index(sel_row["category"]) if sel_row["category"] in cat_keys else 0
                 new_cat = st.selectbox("카테고리 수정", options=cat_keys, index=cat_idx, key="edit_cat")
                 new_memo = st.text_input("메모 수정", value=str(sel_row["memo"]) if sel_row["memo"] else "", key="edit_memo")
@@ -240,7 +238,7 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### 🗑️ 내역 삭제")
-        if not filtered.empty and "id" in filtered.columns and len(filtered) > 0:
+        if not filtered.empty and "id" in filtered.columns:
             id_list2 = filtered["id"].tolist()
             del_id = st.selectbox(
                 "삭제할 항목 선택", id_list2,
