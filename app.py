@@ -194,7 +194,8 @@ with tab3:
                 (filtered["date"] <= date_range[1])
             ]
         st.markdown(f"**총 {len(filtered)}건 | 합계: {fmt_won(filtered['amount'].sum())}**")
-        display_df = filtered[["id","date","category","amount","memo"]].copy()
+       cols = [c for c in ["id","date","category","amount","memo"] if c in filtered.columns]
+display_df = filtered[cols].copy()
         display_df.columns = ["ID","날짜","카테고리","금액(원)","메모"]
         display_df["금액(원)"] = display_df["금액(원)"].apply(lambda x: f"{x:,}")
         st.dataframe(display_df, use_container_width=True, height=300)
