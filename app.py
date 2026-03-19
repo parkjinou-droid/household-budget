@@ -45,6 +45,8 @@ def load_data():
             df = pd.DataFrame(res.json())
             df["date"] = pd.to_datetime(df["date"]).dt.date
             df["amount"] = df["amount"].astype(int)
+            if "id" in df.columns:
+                df["id"] = df["id"].astype(int)
             return df
     except Exception as e:
         st.error(f"데이터 오류: {e}")
@@ -175,20 +177,22 @@ with tab3:
     else:
         cf1, cf2 = st.columns(2)
         with cf1:
-            filter_cat = st.multiselect("카테고리 필터",
-                                        options=list(st.session_state.categories.keys()),
-                                        default=list(st.session_state.categories.keys()))
+            all_cats = list(st.session_state.categories.keys())
+            filter_cat = st.multiselect("카테고리 필터", options=all_cats, default=all_cats)
         with cf2:
             date_range = st.date_input("기간 선택",
                                        value=[df["date"].min(), df["date"].max()],
                                        format="YYYY/MM/DD")
-        filtered = df[df["category"].isin(filter_cat)]
+        filtered = df.copy()
+        if filter_cat:
+            filtered = filtered[filtered["category"].isin(filter_cat)]
         if len(date_range) == 2:
             filtered = filtered[
                 (filtered["date"] >= date_range[0]) &
                 (filtered["date"] <= date_range[1])
             ]
         st.markdown(f"**총 {len(filtered)}건 | 합계: {fmt_won(filtered['amount'].sum())}**")
+
         if not filtered.empty:
             show_cols = [c for c in ["id", "date", "category", "amount", "memo"] if c in filtered.columns]
             display_df = filtered[show_cols].copy()
@@ -200,11 +204,11 @@ with tab3:
 
         st.markdown("---")
         st.markdown("#### ✏️ 내역 수정")
-        if not filtered.empty and "id" in filtered.columns:
+        if not filtered.empty and "id" in filtered.columns and len(filtered) > 0:
             id_list = filtered["id"].tolist()
             sel_id = st.selectbox(
-                "수정할 항목 ID 선택", id_list,
-                format_func=lambda x: f"ID {x} — {filtered[filtered['id'] == x]['category'].values[0]} {fmt_won(filtered[filtered['id'] == x]['amount'].values[0])}"
+                "수정할 항목 선택", id_list,
+                format_func=lambda x: f"ID {x} | {filtered[filtered['id']==x]['category'].values[0]} | {fmt_won(filtered[filtered['id']==x]['amount'].values[0])} | {filtered[filtered['id']==x]['date'].values[0]}"
             )
             sel_row = filtered[filtered["id"] == sel_id].iloc[0]
             mc1, mc2 = st.columns(2)
@@ -228,19 +232,24 @@ with tab3:
                         st.error("수정 실패!")
                 except ValueError:
                     st.error("금액은 숫자만 입력해주세요!")
+        else:
+            st.info("수정할 항목이 없어요!")
 
         st.markdown("---")
         st.markdown("#### 🗑️ 내역 삭제")
-        if not filtered.empty and "id" in filtered.columns:
+        if not filtered.empty and "id" in filtered.columns and len(filtered) > 0:
+            id_list2 = filtered["id"].tolist()
             del_id = st.selectbox(
-                "삭제할 항목 ID 선택", id_list,
-                format_func=lambda x: f"ID {x} — {filtered[filtered['id'] == x]['category'].values[0]} {fmt_won(filtered[filtered['id'] == x]['amount'].values[0])}",
+                "삭제할 항목 선택", id_list2,
+                format_func=lambda x: f"ID {x} | {filtered[filtered['id']==x]['category'].values[0]} | {fmt_won(filtered[filtered['id']==x]['amount'].values[0])} | {filtered[filtered['id']==x]['date'].values[0]}",
                 key="del_select"
             )
             if st.button("🗑️ 삭제하기", type="primary"):
                 delete_expense(del_id)
                 st.success("삭제 완료!")
                 st.rerun()
+        else:
+            st.info("삭제할 항목이 없어요!")
 
         st.markdown("---")
         csv = filtered.to_csv(index=False, encoding="utf-8-sig")
